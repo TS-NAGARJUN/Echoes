@@ -18,16 +18,40 @@ const User = require('../models/User');
  * @returns {Array} List of user objects (without passwords)
  */
 const getUsers = asyncHandler(async (req, res) => {
-  // Find all users except the authenticated user
-  const users = await User.find({ _id: { $ne: req.user._id } }).select(
-    '-password' // Exclude password field
-  );
+  try {
+    const authenticatedUserId = req.user?._id;
+    console.log('✓ getUsers endpoint called');
+    console.log('✓ Authenticated user ID:', authenticatedUserId);
+    
+    if (!authenticatedUserId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authenticated',
+      });
+    }
 
-  res.status(200).json({
-    success: true,
-    count: users.length,
-    data: users,
-  });
+    // Find all users except the authenticated user
+    const users = await User.find({ _id: { $ne: authenticatedUserId } })
+      .select('-password -token') // Exclude password and token fields
+      .lean() // Return plain objects for better performance
+      .sort({ name: 1 }); // Sort by name
+
+    console.log(`✓ Found ${users.length} other users in database`);
+
+    // Ensure we always return an array
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      data: Array.isArray(users) ? users : [],
+    });
+  } catch (error) {
+    console.error('✗ Error in getUsers:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users',
+      error: error.message,
+    });
+  }
 });
 
 module.exports = { getUsers };

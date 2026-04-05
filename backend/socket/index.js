@@ -9,6 +9,9 @@ const { setupMessageEvents } = require('./messageEvents');
 
 let io;
 
+// Track online users - Maps userId to socket details
+const onlineUsers = new Map();
+
 /**
  * Initialize Socket.io server for real-time communication.
  * Sets up connection handlers and message event listeners.
@@ -17,9 +20,15 @@ let io;
  */
 const initSocket = (server) => {
   // Create Socket.io server with CORS configuration
+  // Handle comma-separated origins from env variable (split into array if needed)
+  let corsOrigin = process.env.CORS_ORIGIN || '*';
+  if (corsOrigin.includes(',')) {
+    corsOrigin = corsOrigin.split(',').map(origin => origin.trim());
+  }
+
   io = new Server(server, {
     cors: {
-      origin: process.env.CORS_ORIGIN || '*',
+      origin: corsOrigin,
       methods: ['GET', 'POST'],
       credentials: true,
     },
@@ -35,14 +44,39 @@ const initSocket = (server) => {
      * Join a user to their personal room using userId.
      * This allows targeted message delivery to specific users.
      * Event: join
-     * Expected payload: { userId: string }
+     * Expected payload: { userId: string, userData: object }
      */
-    socket.on('join', (userId) => {
-      socket.join(userId);
-      console.log(`✓ User ${userId} joined room`);
+    socket.on('join', (data) => {
+      const userId = typeof data === 'string' ? data : data.userId;
+      const userData = typeof data === 'object' ? data.userData : null;
 
-      // Notify others that user is online
-      io.emit('userOnline', { userId, status: 'online' });
+      // Join user to their personal room
+      socket.join(userId);
+      socket.userId = userId;
+
+      // Track user as online
+      onlineUsers.set(userId, {
+        socketId: socket.id,
+        userId,
+        userData,
+        joinedAt: new Date(),
+      });
+
+      console.log(`✓ User ${userId} joined room. Online users: ${onlineUsers.size}`);
+
+      // Send current online users list to the newly connected user
+      socket.emit('userJoined', {
+        userId,
+        userData,
+        onlineUsers: Array.from(onlineUsers.values()),
+      });
+
+      // Broadcast to all other clients that a new user joined
+      socket.broadcast.emit('userJoined', {
+        userId,
+        userData,
+        onlineUsers: Array.from(onlineUsers.values()),
+      });
     });
 
     /**
@@ -97,10 +131,17 @@ const initSocket = (server) => {
      * Cleanup and notify other users.
      */
     socket.on('disconnect', () => {
-      console.log(`✗ Socket disconnected: ${socket.id}`);
+      const userId = socket.userId;
+      if (userId) {
+        onlineUsers.delete(userId);
+        console.log(`✗ Socket disconnected: ${socket.id}. User ${userId} went offline. Online users: ${onlineUsers.size}`);
 
-      // Notify others that user is offline
-      io.emit('userOffline', { userId: socket.id, status: 'offline' });
+        // Broadcast updated user list to all remaining clients
+        io.emit('userLeft', {
+          userId,
+          onlineUsers: Array.from(onlineUsers.values()),
+        });
+      }
     });
 
     /**
@@ -125,4 +166,12 @@ const getIO = () => {
   return io;
 };
 
-module.exports = { initSocket, getIO };
+/**
+ * Get current online users
+ * @returns {Array} Array of online user objects
+ */
+const getOnlineUsers = () => {
+  return Array.from(onlineUsers.values());
+};
+
+module.exports = { initSocket, getIO, getOnlineUsers };

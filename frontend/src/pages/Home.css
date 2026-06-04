@@ -1,0 +1,145 @@
+* {
+  box-sizing: border-box;
+}
+
+.home-container {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0; /* ← was 16px */
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+.chat-wrapper {
+  width: 100%;
+  height: 100%;
+  max-width: 1400px;
+  background: white;
+  border-radius: 0; /* ← remove rounded corners for edge-to-edge */
+  box-shadow: none; /* ← optional: remove shadow too */
+  display: flex;
+  overflow: hidden;
+}
+
+.chat-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  border-right: 1px solid #e5e7eb;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.chat-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.placeholder-content {
+  text-align: center;
+  color: #6b7280;
+}
+
+.placeholder-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  color: #d1d5db;
+  opacity: 0.5;
+}
+
+.placeholder-content h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #374151;
+  margin: 0 0 12px 0;
+}
+
+.placeholder-content p {
+  font-size: 16px;
+  color: #6b7280;
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .chat-sidebar {
+    width: 280px;
+  }
+
+  .placeholder-icon {
+    width: 70px;
+    height: 70px;
+  }
+
+  .placeholder-content h2 {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .home-container {
+    padding: 8px;
+  }
+
+  .chat-wrapper {
+    border-radius: 12px;
+  }
+
+  .chat-sidebar {
+    width: 260px;
+  }
+
+  .placeholder-content h2 {
+    font-size: 18px;
+  }
+
+  .placeholder-content p {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .chat-wrapper {
+    flex-direction: column;
+  }
+
+  .chat-sidebar {
+    width: 100%;
+    height: 35%;
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .chat-main-content {
+    height: 65%;
+  }
+
+  .placeholder-content h2 {
+    font-size: 16px;
+  }
+
+  .placeholder-icon {
+    width: 60px;
+    height: 60px;
+  }
+}

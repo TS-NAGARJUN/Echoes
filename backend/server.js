@@ -4,12 +4,16 @@
  * Initializes Express app, connects to MongoDB, and sets up Socket.io for real-time messaging.
  */
 
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '1.1.1.1']);
+dns.setDefaultResultOrder('ipv4first');
+
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
 require('dotenv').config();
 
-const connectDB = require('./config/db');
+const mongoose = require('mongoose');
 const { errorHandler } = require('./middleware/errorHandler');
 const { notFound } = require('./middleware/notFound');
 
@@ -55,16 +59,40 @@ const PORT = process.env.PORT || 5000;
 /**
  * Start server and connect to database
  */
-connectDB().then(() => {
-  // Create HTTP server wrapper for Socket.io
-  const server = http.createServer(app);
+const { validateConfig } = require('./config/config');
 
-  // Initialize Socket.io for real-time messaging
-  initSocket(server);
+// Validate required env vars early
+validateConfig();
 
-  // Start listening on specified port
-  server.listen(PORT, () => {
-    console.log(`\n✓ Server running on http://localhost:${PORT}`);
-    console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}\n`);
+// Debug: show if MONGO_URI is present (mask password for safety)
+const rawMongo = process.env.MONGO_URI || '<missing>';
+let maskedMongo = rawMongo;
+try {
+  maskedMongo = rawMongo.replace(/\/\/(.+?):(.+?)@/, '//$1:*****@');
+} catch (e) {}
+console.log(`\n🔎 Using MONGO_URI: ${maskedMongo}\n`);
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log('✅ MongoDB Connected');
+
+    // Create HTTP server wrapper for Socket.io
+    const server = http.createServer(app);
+
+    // Initialize Socket.io for real-time messaging
+    initSocket(server);
+
+    // Start listening on specified port
+    server.listen(PORT, () => {
+      console.log(`\n✓ Server running on http://localhost:${PORT}`);
+      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}\n`);
+    });
+  })
+  .catch((err) => {
+    console.error('FULL ERROR:');
+    console.error(err);
+    console.error('NAME:', err.name);
+    console.error('MESSAGE:', err.message);
+    console.error('CAUSE:', err.cause);
+    process.exit(1);
   });
-});

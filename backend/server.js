@@ -35,6 +35,14 @@ app.use(express.json());
 
 // ============= ROUTES SETUP =============
 
+// Root health check route
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Backend API is running',
+  });
+});
+
 // Authentication routes (register, login)
 app.use('/api/auth', authRoutes);
 

@@ -5,7 +5,14 @@
 
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// Ensure the configured VITE_API_URL includes the `/api` prefix.
+// Vite env vars are baked at build time; if someone sets VITE_API_URL
+// to a root domain (e.g. https://example.com) we append /api.
+const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+let API_URL = rawApiUrl;
+if (!/\/api(?:\/)?$/i.test(API_URL)) {
+  API_URL = API_URL.replace(/\/+$/g, '') + '/api';
+}
 
 /**
  * Create axios instance with default config

@@ -90,9 +90,9 @@ mongoose.connect(process.env.MONGO_URI)
     // Initialize Socket.io for real-time messaging
     initSocket(server);
 
-    // Start listening on specified port
-    server.listen(PORT, () => {
-      console.log(`\n✓ Server running on http://localhost:${PORT}`);
+    // Start listening on specified port and bind to all interfaces for Render
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`\n✓ Server running on port ${PORT}`);
       console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}\n`);
     });
   })

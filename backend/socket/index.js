@@ -6,6 +6,7 @@
 
 const { Server } = require('socket.io');
 const { setupMessageEvents } = require('./messageEvents');
+const { config } = require('../config/config');
 
 let io;
 
@@ -21,9 +22,9 @@ const onlineUsers = new Map();
 const initSocket = (server) => {
   // Create Socket.io server with CORS configuration
   // Handle comma-separated origins from env variable (split into array if needed)
-  let corsOrigin = process.env.CORS_ORIGIN || '*';
+  let corsOrigin = config.corsOrigin || '*';
   if (corsOrigin.includes(',')) {
-    corsOrigin = corsOrigin.split(',').map(origin => origin.trim());
+    corsOrigin = corsOrigin.split(',').map((origin) => origin.trim());
   }
 
   // Debug: show CORS origin(s) used for socket.io

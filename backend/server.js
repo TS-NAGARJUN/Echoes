@@ -22,13 +22,19 @@ const userRoutes = require('./routes/userRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 
 const { initSocket } = require('./socket');
+const { config, validateConfig } = require('./config/config');
 
 const app = express();
 
 // ============= MIDDLEWARE SETUP =============
 
 // Enable CORS for frontend communication
-app.use(cors());
+const corsOptions = {
+  origin: config.corsOrigin,
+  credentials: true,
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Parse incoming JSON requests
 app.use(express.json());

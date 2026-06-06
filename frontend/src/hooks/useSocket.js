@@ -99,10 +99,13 @@ export const useSocket = () => {
 
     // Create socket connection
     socketRef.current = io(SOCKET_SERVER_URL, {
+      transports: ['websocket'],
+      withCredentials: true,
       reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
       reconnectionAttempts: 5,
+      timeout: 60000,
       query: {
         userId: user._id,
       },

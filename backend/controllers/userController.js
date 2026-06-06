@@ -20,8 +20,8 @@ const User = require('../models/User');
 const getUsers = asyncHandler(async (req, res) => {
   try {
     const authenticatedUserId = req.user?._id;
-    console.log('✓ getUsers endpoint called');
-    console.log('✓ Authenticated user ID:', authenticatedUserId);
+    console.log('✓ getUsers endpoint called', { time: new Date().toISOString() });
+    console.log('✓ Authenticated user ID:', authenticatedUserId, 'request_ip:', req.ip, 'user-agent:', req.headers['user-agent']);
     
     if (!authenticatedUserId) {
       return res.status(401).json({

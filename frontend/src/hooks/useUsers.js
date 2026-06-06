@@ -11,7 +11,13 @@ export const useUsers = () => {
       try {
         setLoading(true);
         setError(null);
-        console.log('[useUsers] Fetching users from database...');
+        // Attach a client debug id to correlate with server logs
+        let clientId = localStorage.getItem('clientDebugId');
+        if (!clientId) {
+          clientId = `client_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+          localStorage.setItem('clientDebugId', clientId);
+        }
+        console.log('[useUsers] Fetching users from database...', { clientId, time: new Date().toISOString() });
         const response = await api.get('/users');
         console.log('[useUsers] API Response:', response);
 

@@ -26,6 +26,9 @@ const initSocket = (server) => {
     corsOrigin = corsOrigin.split(',').map(origin => origin.trim());
   }
 
+  // Debug: show CORS origin(s) used for socket.io
+  console.log('Socket.io CORS origin:', corsOrigin);
+
   io = new Server(server, {
     cors: {
       origin: corsOrigin,

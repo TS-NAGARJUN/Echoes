@@ -1,29 +1,40 @@
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 .home-container {
   width: 100%;
   height: 100vh;
   height: 100dvh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0; /* ← was 16px */
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
+  /* No background gradient — chat-wrapper fills the whole viewport */
 }
 
 .chat-wrapper {
   width: 100%;
   height: 100%;
-  max-width: 1400px;
+  /* Remove max-width cap and border-radius — was causing side gaps */
+  max-width: none;
+  border-radius: 0;
+  box-shadow: none;
   background: white;
-  border-radius: 0; /* ← remove rounded corners for edge-to-edge */
-  box-shadow: none; /* ← optional: remove shadow too */
   display: flex;
   overflow: hidden;
 }
@@ -40,6 +51,7 @@
 
 .chat-main-content {
   flex: 1;
+  min-width: 0; /* prevents flex blowout on narrow screens */
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -57,6 +69,7 @@
 .placeholder-content {
   text-align: center;
   color: #6b7280;
+  padding: 24px;
 }
 
 .placeholder-icon {
@@ -80,7 +93,7 @@
   margin: 0;
 }
 
-/* Responsive Design */
+/* ─── Tablet (769px – 1024px) ─────────────────────────────────────── */
 @media (max-width: 1024px) {
   .chat-sidebar {
     width: 280px;
@@ -96,15 +109,8 @@
   }
 }
 
+/* ─── Small tablet (641px – 768px) ───────────────────────────────── */
 @media (max-width: 768px) {
-  .home-container {
-    padding: 8px;
-  }
-
-  .chat-wrapper {
-    border-radius: 12px;
-  }
-
   .chat-sidebar {
     width: 260px;
   }
@@ -118,20 +124,37 @@
   }
 }
 
+/* ─── Mobile (≤ 640px) — slide-panel layout ───────────────────────── */
 @media (max-width: 640px) {
-  .chat-wrapper {
-    flex-direction: column;
+  .chat-sidebar {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    border-right: none;
+    z-index: 40;
+    transform: translateX(0);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  .chat-sidebar {
-    width: 100%;
-    height: 35%;
-    border-right: none;
-    border-bottom: 1px solid #e5e7eb;
+  /* Slide sidebar off-screen when a chat is active */
+  .chat-wrapper.chat-active .chat-sidebar {
+    transform: translateX(-100%);
+    pointer-events: none;
   }
 
   .chat-main-content {
-    height: 65%;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    z-index: 30;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .chat-wrapper.chat-active .chat-main-content {
+    transform: translateX(0);
   }
 
   .placeholder-content h2 {
@@ -141,5 +164,13 @@
   .placeholder-icon {
     width: 60px;
     height: 60px;
+  }
+}
+
+/* ─── Reduced motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .chat-sidebar,
+  .chat-main-content {
+    transition: none;
   }
 }

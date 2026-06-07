@@ -20,35 +20,41 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
    * Fetch previous messages from database when chat is opened
    */
   useEffect(() => {
-    if (!selectedUserId || !user?._id) return;
+  if (!selectedUserId || !user?._id) return;
 
-    const fetchMessages = async () => {
-      try {
-        setLoadingMessages(true);
-        const response = await api.get(`/messages/${selectedUserId}`);
-        const fetchedMessages = Array.isArray(response) ? response : [];
+  const fetchMessages = async () => {
+    try {
+      setLoadingMessages(true);
+      const response = await api.get(`/messages/${selectedUserId}`);
 
-        const filteredMessages = fetchedMessages.filter(
-          (msg) =>
-            (msg.senderId === user._id && msg.receiverId === selectedUserId) ||
-            (msg.senderId === selectedUserId && msg.receiverId === user._id)
+      // ✅ API returns { success, count, data: [...] }
+      const fetchedMessages = response?.data || [];
+
+      // ✅ senderId/receiverId are populated objects, so compare ._id
+      const filteredMessages = fetchedMessages.filter(msg => {
+        const sender   = msg.senderId?._id   || msg.senderId;
+        const receiver = msg.receiverId?._id || msg.receiverId;
+        return (
+          (sender === user._id && receiver === selectedUserId) ||
+          (sender === selectedUserId && receiver === user._id)
         );
+      });
 
-        const normalized = filteredMessages.map((msg) => ({
-          ...msg,
-          timestamp: msg.timestamp || msg.createdAt,
-        }));
+      const normalized = filteredMessages.map(msg => ({
+        ...msg,
+        timestamp: msg.timestamp || msg.createdAt,
+      }));
 
-        setMessages(normalized);
-      } catch (error) {
-        console.error('Error fetching messages:', error);
-      } finally {
-        setLoadingMessages(false);
-      }
-    };
+      setMessages(normalized);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
 
-    fetchMessages();
-  }, [selectedUserId, user?._id]);
+  fetchMessages();
+}, [selectedUserId, user?._id]);
 
   useEffect(() => {
     if (!socket) return;
@@ -172,8 +178,8 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
               <div
                 key={message._id}
                 className={`message ${
-                  message.senderId === user?._id ? 'sent' : 'received'
-                }`}
+  (message.senderId?._id || message.senderId) === user?._id ? 'sent' : 'received'
+              }`}
               >
                 <div className="message-content">
                   <p className="message-text">{message.text}</p>

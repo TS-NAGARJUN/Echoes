@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar from '../components/common/Sidebar';
 import ChatWindow from '../components/ChatWindow';
 import './Home.css';
@@ -10,15 +10,33 @@ import './Home.css';
 const Home = () => {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
+  const wrapperRef = useRef(null);
 
   const handleSelectUser = (userId, userData) => {
     setSelectedUserId(userId);
     setSelectedUser(userData);
   };
 
+  // Toggle the CSS class that drives the mobile slide animation
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    if (selectedUserId && selectedUser) {
+      wrapper.classList.add('chat-active');
+    } else {
+      wrapper.classList.remove('chat-active');
+    }
+  }, [selectedUserId, selectedUser]);
+
+  // Back button: clears selection and slides back to sidebar on mobile
+  const handleBack = () => {
+    setSelectedUserId(null);
+    setSelectedUser(null);
+  };
+
   return (
     <div className="home-container">
-      <div className="chat-wrapper">
+      <div className="chat-wrapper" ref={wrapperRef}>
         <aside className="chat-sidebar">
           <Sidebar
             selectedUserId={selectedUserId}
@@ -32,6 +50,7 @@ const Home = () => {
             <ChatWindow
               selectedUserId={selectedUserId}
               selectedUser={selectedUser}
+              onBack={handleBack}   // pass to ChatWindow so it can render a ← button
             />
           ) : (
             <div className="chat-placeholder">

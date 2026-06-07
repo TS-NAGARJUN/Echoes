@@ -7,7 +7,7 @@
   display: flex;
   flex-direction: column;
   width: 300px;
-  height: 100vh;
+  height: 100dvh;
   background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
   border-right: 1px solid rgba(148, 163, 184, 0.2);
   color: #e2e8f0;
@@ -21,6 +21,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .sidebar-header h2 {
@@ -43,6 +44,7 @@
   height: 8px;
   border-radius: 50%;
   transition: background-color 0.3s ease;
+  flex-shrink: 0;
 }
 
 .status-dot.connected {
@@ -65,6 +67,7 @@
 .sidebar-search {
   padding: 1rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  flex-shrink: 0;
 }
 
 .search-input {
@@ -95,6 +98,8 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0.5rem 0;
+  /* Smooth momentum scrolling on iOS */
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Custom scroll bar styling */
@@ -122,7 +127,6 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100%;
   padding: 2rem;
   text-align: center;
 }
@@ -160,17 +164,24 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 0.75rem;
+  padding: 0.75rem;
   margin: 0.25rem 0.5rem;
   cursor: pointer;
   border-radius: 10px;
   transition: all 0.2s ease;
   position: relative;
+  /* Prevent tap highlight on mobile */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .sidebar-user-item:hover {
   background: rgba(124, 111, 255, 0.1);
   transform: translateX(4px);
+}
+
+.sidebar-user-item:active {
+  background: rgba(124, 111, 255, 0.15);
+  transform: translateX(2px);
 }
 
 .sidebar-user-item.active {
@@ -242,6 +253,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin: 0;
 }
 
 .user-email {
@@ -250,6 +262,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin: 0;
 }
 
 /* Status badge */
@@ -273,65 +286,15 @@
   padding: 1rem;
   border-top: 1px solid rgba(148, 163, 184, 0.15);
   text-align: center;
+  flex-shrink: 0;
+  /* Ensure footer clears iOS safe area (notch / home bar) */
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
 .user-count {
   margin: 0;
   font-size: 0.75rem;
   color: #94a3b8;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .sidebar-container {
-    width: 250px;
-  }
-
-  .sidebar-header h2 {
-    font-size: 1.25rem;
-  }
-
-  .sidebar-user-item {
-    padding: 0.5rem;
-  }
-
-  .user-item-avatar {
-    width: 36px;
-    height: 36px;
-  }
-
-  .sidebar-header {
-    padding: 1rem;
-  }
-
-  .sidebar-search {
-    padding: 0.75rem;
-  }
-}
-
-/* Animation for new users */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.sidebar-user-item {
-  animation: slideIn 0.3s ease;
 }
 
 /* User section in footer */
@@ -379,25 +342,6 @@
   min-width: 0;
 }
 
-.user-name {
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #f1f5f9;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.user-email {
-  margin: 0;
-  font-size: 0.75rem;
-  color: #94a3b8;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .more-btn {
   background: none;
   border: none;
@@ -410,6 +354,10 @@
   border-radius: 6px;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  /* Larger tap target on mobile */
+  min-width: 36px;
+  min-height: 36px;
 }
 
 .more-btn:hover {
@@ -426,21 +374,10 @@
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 8px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-  z-index: 10;
+  z-index: 50;
   min-width: 150px;
   overflow: hidden;
   animation: slideUp 0.2s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .menu-item {
@@ -457,6 +394,7 @@
   transition: all 0.2s ease;
   text-align: left;
   font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .menu-item:hover {
@@ -475,4 +413,114 @@
 
 .menu-item svg {
   flex-shrink: 0;
+}
+
+/* ─── Animations ──────────────────────────────────────────────────── */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+.sidebar-user-item {
+  animation: slideIn 0.3s ease;
+}
+
+/* ─── Tablet (641px – 1023px) ─────────────────────────────────────── */
+@media (max-width: 1023px) {
+  .sidebar-container {
+    width: 260px;
+  }
+}
+
+/* ─── Mobile (≤ 640px) ────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .sidebar-container {
+    /* Fill the fixed overlay set by Home.css */
+    width: 100%;
+    height: 100dvh;
+    border-right: none;
+  }
+
+  .sidebar-header {
+    padding: 1rem;
+    /* Reserve space for status bar on iOS */
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+
+  .sidebar-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .sidebar-search {
+    padding: 0.75rem 1rem;
+  }
+
+  .search-input {
+    padding: 0.875rem 1rem;
+    font-size: 1rem; /* Prevents iOS auto-zoom on focus */
+    border-radius: 10px;
+  }
+
+  .sidebar-user-item {
+    padding: 0.875rem 0.75rem;
+    margin: 0.2rem 0.5rem;
+    /* Disable the translateX hover on touch — it looks odd */
+    transform: none !important;
+  }
+
+  .sidebar-user-item:active {
+    background: rgba(124, 111, 255, 0.18);
+    transform: none !important;
+  }
+
+  .user-item-avatar {
+    width: 44px;
+    height: 44px;
+  }
+
+  .status-indicator {
+    width: 13px;
+    height: 13px;
+  }
+
+  .user-name {
+    font-size: 0.9375rem;
+  }
+
+  .user-avatar-small {
+    width: 36px;
+    height: 36px;
+  }
+
+  .more-menu {
+    /* On mobile open above the footer with a little breathing room */
+    bottom: 56px;
+    right: 0;
+    left: 0;
+    min-width: unset;
+    width: 100%;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .menu-item {
+    padding: 1rem 1.25rem;
+    font-size: 1rem;
+  }
+}
+
+/* ─── Reduced motion ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-user-item { animation: none; }
+  .more-menu         { animation: none; }
+  .status-dot.checking { animation: none; }
 }

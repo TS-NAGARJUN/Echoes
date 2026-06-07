@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../../hooks/useSocket';
 import { useAuth } from '../../hooks/useAuth';
 import { useUsers } from '../../hooks/useUsers';
@@ -14,9 +15,11 @@ import './Sidebar.css';
  * @returns {JSX.Element} Sidebar component
  */
 const Sidebar = ({ selectedUserId, onSelectUser }) => {
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const { onlineUsers, isConnected } = useSocket();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // Use custom hooks for data management
   const { allUsers, loading, error } = useUsers();
@@ -28,6 +31,11 @@ const Sidebar = ({ selectedUserId, onSelectUser }) => {
   );
 
   const totalUsers = Array.isArray(allUsers) && allUsers.length > 0 ? allUsers.length - 1 : 0;
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   return (
     <div className="sidebar-container">
@@ -78,10 +86,46 @@ const Sidebar = ({ selectedUserId, onSelectUser }) => {
           />
         )}
       </div>
+      
+      {/* Footer with user info and logout */}
       <div className="sidebar-footer">
         <p className="user-count">
           Total: {totalUsers} users
         </p>
+        <div className="sidebar-user-section">
+          <div className="user-info">
+            <div className="user-avatar-small">
+              {user?.profilePic ? (
+                <img src={user.profilePic} alt={user.name} />
+              ) : (
+                <div className="avatar-placeholder-small">{(user?.name || 'U')[0].toUpperCase()}</div>
+              )}
+            </div>
+            <div className="user-details">
+              <p className="user-name">{user?.name}</p>
+              <p className="user-email">{user?.email}</p>
+            </div>
+            <button
+              className="more-btn"
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              title="More options"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+                <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+              </svg>
+            </button>
+          </div>
+          {showMoreMenu && (
+            <div className="more-menu">
+              <button className="menu-item logout-btn" onClick={handleLogout}>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                  <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+                </svg>
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

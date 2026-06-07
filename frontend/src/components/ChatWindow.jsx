@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useSocket } from '../hooks/useSocket';
+import api from '../utils/api';
 import './ChatWindow.css';
 
 const ChatWindow = ({ selectedUserId, selectedUser }) => {
@@ -8,11 +9,48 @@ const ChatWindow = ({ selectedUserId, selectedUser }) => {
   const { socket, sendMessage } = useSocket();
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  /**
+   * Fetch previous messages from database when chat is opened
+   */
+  useEffect(() => {
+    if (!selectedUserId || !user?._id) return;
+
+    const fetchMessages = async () => {
+      try {
+        setLoadingMessages(true);
+        // Fetch messages with the selected user
+        const response = await api.get(`/messages/${selectedUserId}`);
+        const fetchedMessages = Array.isArray(response) ? response : [];
+        
+        // Filter messages that are between current user and selected user
+        const filteredMessages = fetchedMessages.filter(msg => 
+          (msg.senderId === user._id && msg.receiverId === selectedUserId) ||
+          (msg.senderId === selectedUserId && msg.receiverId === user._id)
+        );
+
+        // Normalize timestamps
+        const normalized = filteredMessages.map(msg => ({
+          ...msg,
+          timestamp: msg.timestamp || msg.createdAt,
+        }));
+
+        setMessages(normalized);
+        setLoadingMessages(false);
+      } catch (error) {
+        console.error('Error fetching messages:', error);
+        setLoadingMessages(false);
+      }
+    };
+
+    fetchMessages();
+  }, [selectedUserId, user?._id]);
 
   useEffect(() => {
     if (!socket) return;
@@ -53,7 +91,19 @@ const ChatWindow = ({ selectedUserId, selectedUser }) => {
     };
 
     setMessages((prev) => [...prev, newMessage]);
+    
+    // Send via Socket.io for real-time delivery
     sendMessage(newMessage);
+    
+    // Save to database via API
+    api.post('/messages', {
+      senderId: user._id,
+      receiverId: selectedUserId,
+      text: trimmed,
+    }).catch(error => {
+      console.error('Error saving message to database:', error);
+    });
+    
     setMessageText('');
   };
 

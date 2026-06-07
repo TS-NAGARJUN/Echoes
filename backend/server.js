@@ -29,8 +29,13 @@ const app = express();
 // ============= MIDDLEWARE SETUP =============
 
 // Enable CORS for frontend communication
+// Support comma-separated origins from env (e.g. "http://localhost:5173,http://localhost:3000")
+let corsOrigin = config.corsOrigin || '*';
+if (typeof corsOrigin === 'string' && corsOrigin.includes(',')) {
+  corsOrigin = corsOrigin.split(',').map((o) => o.trim());
+}
 const corsOptions = {
-  origin: config.corsOrigin,
+  origin: corsOrigin,
   credentials: true,
 };
 app.use(cors(corsOptions));
@@ -95,9 +100,11 @@ mongoose.connect(process.env.MONGO_URI)
     // Initialize Socket.io for real-time messaging
     initSocket(server);
 
-    // Start listening on specified port and bind to all interfaces for Render
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`\n✓ Server running on port ${PORT}`);
+    // Start listening on specified port
+    // Use localhost for development; Render/production will work with default binding
+    const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+    server.listen(PORT, HOST, () => {
+      console.log(`\n✓ Server running on ${HOST}:${PORT}`);
       console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}\n`);
     });
   })

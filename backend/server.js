@@ -73,7 +73,6 @@ const PORT = process.env.PORT || 5000;
 /**
  * Start server and connect to database
  */
-const { validateConfig } = require('./config/config');
 
 // Validate required env vars early
 validateConfig();

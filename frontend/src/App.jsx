@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Home from './pages/Home';
 import './App.css';
+import VideoCall from './components/VideoCall';
 
 /**
  * Protected Route Component
@@ -31,6 +32,8 @@ function App() {
 
           {/* 404 */}
           <Route path="*" element={<Navigate to="/login" />} />
+
+          <Route path="/video/:roomId" element={<ProtectedRoute element={<VideoCall />} />} />
         </Routes>
       </AuthProvider>
     </Router>

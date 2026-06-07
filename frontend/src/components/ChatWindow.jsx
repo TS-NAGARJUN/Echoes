@@ -3,58 +3,62 @@ import { useAuth } from '../hooks/useAuth';
 import { useSocket } from '../hooks/useSocket';
 import api from '../utils/api';
 import './ChatWindow.css';
+import { useNavigate } from 'react-router-dom';
 
 const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
   const { user } = useAuth();
   const { socket, sendMessage } = useSocket();
+  const navigate = useNavigate(); // ✅ top level
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
   const [loadingMessages, setLoadingMessages] = useState(false);
   const messagesEndRef = useRef(null);
 
+  // ✅ top level — not inside useEffect or fetchMessages
+  const handleCall = () => {
+    if (!user?._id || !selectedUserId) return;
+    const roomId = [user._id, selectedUserId].sort().join('_');
+    navigate(`/video/${roomId}`);
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  /**
-   * Fetch previous messages from database when chat is opened
-   */
   useEffect(() => {
-  if (!selectedUserId || !user?._id) return;
+    if (!selectedUserId || !user?._id) return;
 
-  const fetchMessages = async () => {
-    try {
-      setLoadingMessages(true);
-      const response = await api.get(`/messages/${selectedUserId}`);
+    const fetchMessages = async () => {
+      try {
+        setLoadingMessages(true);
+        const response = await api.get(`/messages/${selectedUserId}`);
 
-      // ✅ API returns { success, count, data: [...] }
-      const fetchedMessages = response?.data || [];
+        const fetchedMessages = response?.data || [];
 
-      // ✅ senderId/receiverId are populated objects, so compare ._id
-      const filteredMessages = fetchedMessages.filter(msg => {
-        const sender   = msg.senderId?._id   || msg.senderId;
-        const receiver = msg.receiverId?._id || msg.receiverId;
-        return (
-          (sender === user._id && receiver === selectedUserId) ||
-          (sender === selectedUserId && receiver === user._id)
-        );
-      });
+        const filteredMessages = fetchedMessages.filter(msg => {
+          const sender   = msg.senderId?._id   || msg.senderId;
+          const receiver = msg.receiverId?._id || msg.receiverId;
+          return (
+            (sender === user._id && receiver === selectedUserId) ||
+            (sender === selectedUserId && receiver === user._id)
+          );
+        });
 
-      const normalized = filteredMessages.map(msg => ({
-        ...msg,
-        timestamp: msg.timestamp || msg.createdAt,
-      }));
+        const normalized = filteredMessages.map(msg => ({
+          ...msg,
+          timestamp: msg.timestamp || msg.createdAt,
+        }));
 
-      setMessages(normalized);
-    } catch (error) {
-      console.error('Error fetching messages:', error);
-    } finally {
-      setLoadingMessages(false);
-    }
-  };
+        setMessages(normalized);
+      } catch (error) {
+        console.error('Error fetching messages:', error);
+      } finally {
+        setLoadingMessages(false);
+      }
+    };
 
-  fetchMessages();
-}, [selectedUserId, user?._id]);
+    fetchMessages();
+  }, [selectedUserId, user?._id]);
 
   useEffect(() => {
     if (!socket) return;
@@ -113,7 +117,6 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
       {/* Chat Header */}
       <div className="chat-header">
         <div className="chat-header-left">
-          {/* Back button — CSS hides it on desktop, shows on mobile */}
           {onBack && (
             <button
               className="back-btn"
@@ -143,7 +146,12 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         </div>
 
         <div className="chat-header-actions">
-          <button className="header-action-btn" title="Call" aria-label="Call">
+          <button
+            className="header-action-btn"
+            title="Video call"
+            aria-label="Video call"
+            onClick={handleCall}
+          >
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M15.5 1h-8C6.12 1 5 2.12 5 3.5v17C5 21.88 6.12 23 7.5 23h8c1.38 0 2.5-1.12 2.5-2.5v-17C18 2.12 16.88 1 15.5 1zm-4 21c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4.5-4H7V4h9v14z" />
             </svg>
@@ -178,8 +186,10 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
               <div
                 key={message._id}
                 className={`message ${
-  (message.senderId?._id || message.senderId) === user?._id ? 'sent' : 'received'
-              }`}
+                  (message.senderId?._id || message.senderId) === user?._id
+                    ? 'sent'
+                    : 'received'
+                }`}
               >
                 <div className="message-content">
                   <p className="message-text">{message.text}</p>
@@ -219,7 +229,6 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
             className="message-input"
             maxLength="1000"
             autoComplete="off"
-            /* Explicit font-size stops iOS Safari from zooming on focus */
             style={{ fontSize: '16px' }}
           />
 

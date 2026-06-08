@@ -1,25 +1,29 @@
-import { useState, useEffect, useRef, useCallback } from 'react'; // ✅ added useCallback
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useSocket } from '../hooks/useSocket';
 import api from '../utils/api';
 import './ChatWindow.css';
 import { useNavigate } from 'react-router-dom';
-import MessageContextMenu from "./MessageContextMenu";
+import MessageContextMenu from './MessageContextMenu';
 
 const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
   const { user } = useAuth();
   const { socket, sendMessage } = useSocket();
   const navigate = useNavigate();
+
+  // ─── State ────────────────────────────────────────────────────────────────
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const messagesEndRef = useRef(null);
+  const [replyingTo, setReplyingTo] = useState(null); // { _id, text, senderId }
+  const [ctxMenu, setCtxMenu] = useState(null);       // { message, position }
 
-  // ✅ NEW: context menu state
-  const [ctxMenu, setCtxMenu] = useState(null); // { message, position }
+  // ─── Refs ─────────────────────────────────────────────────────────────────
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
   const longPressTimer = useRef(null);
 
-  // ✅ NEW: open menu on right-click or long-press
+  // ─── Context Menu ─────────────────────────────────────────────────────────
   const openMenu = useCallback((e, message) => {
     e.preventDefault();
     const x = e.clientX ?? e.touches?.[0]?.clientX;
@@ -29,11 +33,14 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
 
   const closeMenu = useCallback(() => setCtxMenu(null), []);
 
-  // ✅ NEW: long-press for mobile
+  // ─── Long-press (mobile) ──────────────────────────────────────────────────
   const onTouchStart = useCallback((e, message) => {
     const touch = e.touches[0];
     longPressTimer.current = setTimeout(() => {
-      openMenu({ preventDefault: () => {}, clientX: touch.clientX, clientY: touch.clientY }, message);
+      openMenu(
+        { preventDefault: () => {}, clientX: touch.clientX, clientY: touch.clientY },
+        message,
+      );
     }, 500);
   }, [openMenu]);
 
@@ -41,45 +48,58 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
     clearTimeout(longPressTimer.current);
   }, []);
 
-  // ✅ NEW: handle menu actions — plug in your API calls here
+  // ─── Context Menu Actions ─────────────────────────────────────────────────
   const handleAction = useCallback((action, message) => {
     switch (action) {
       case 'copy':
         navigator.clipboard.writeText(message.text);
         break;
+
       case 'reply':
-        // TODO: setReplyTo(message)
+        setReplyingTo(message);
+        setTimeout(() => inputRef.current?.focus(), 50);
         break;
+
       case 'forward':
         // TODO: open forward dialog
         break;
+
       case 'delete':
-         api.delete(`/messages/${message._id}`)
-        .then(() => setMessages(prev => prev.filter(m => m._id !== message._id)))
-        .catch(console.error);
+        api
+          .delete(`/messages/${message._id}`)
+          .then(() =>
+            setMessages((prev) => prev.filter((m) => m._id !== message._id)),
+          )
+          .catch(console.error);
         break;
+
       case 'star':
         // TODO: toggle star
         break;
+
       case 'react':
-        // message here is { emoji, message } — see MessageContextMenu
-        // TODO: send reaction
+        // message here is { emoji, message } from MessageContextMenu
+        // TODO: send reaction via socket / api
         break;
+
       default:
         break;
     }
   }, []);
 
+  // ─── Video Call ───────────────────────────────────────────────────────────
   const handleCall = () => {
     if (!user?._id || !selectedUserId) return;
     const roomId = [user._id, selectedUserId].sort().join('_');
     navigate(`/video/${roomId}`);
   };
 
+  // ─── Auto-scroll ──────────────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // ─── Fetch history ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedUserId || !user?._id) return;
 
@@ -87,22 +107,25 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
       try {
         setLoadingMessages(true);
         const response = await api.get(`/messages/${selectedUserId}`);
-        const fetchedMessages = response?.data || [];
-        const filteredMessages = fetchedMessages.filter(msg => {
-          const sender   = msg.senderId?._id   || msg.senderId;
+        const fetched = response?.data || [];
+
+        const filtered = fetched.filter((msg) => {
+          const sender = msg.senderId?._id || msg.senderId;
           const receiver = msg.receiverId?._id || msg.receiverId;
           return (
             (sender === user._id && receiver === selectedUserId) ||
             (sender === selectedUserId && receiver === user._id)
           );
         });
-        const normalized = filteredMessages.map(msg => ({
-          ...msg,
-          timestamp: msg.timestamp || msg.createdAt,
-        }));
-        setMessages(normalized);
-      } catch (error) {
-        console.error('Error fetching messages:', error);
+
+        setMessages(
+          filtered.map((msg) => ({
+            ...msg,
+            timestamp: msg.timestamp || msg.createdAt,
+          })),
+        );
+      } catch (err) {
+        console.error('Error fetching messages:', err);
       } finally {
         setLoadingMessages(false);
       }
@@ -111,24 +134,43 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
     fetchMessages();
   }, [selectedUserId, user?._id]);
 
+  // ─── Incoming socket messages ─────────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
-    const handleIncomingMessage = (message) => {
-      if (message.receiverId === user?._id && message.senderId === selectedUserId) {
+
+    const handleIncoming = (message) => {
+      if (
+        message.receiverId === user?._id &&
+        message.senderId === selectedUserId
+      ) {
         setMessages((prev) => [
           ...prev,
           { ...message, timestamp: message.timestamp || message.createdAt },
         ]);
       }
     };
-    socket.on('message', handleIncomingMessage);
-    return () => socket.off('message', handleIncomingMessage);
+
+    socket.on('message', handleIncoming);
+    return () => socket.off('message', handleIncoming);
   }, [socket, selectedUserId, user?._id]);
 
-  const handleSendMessage = (event) => {
-    event.preventDefault();
+  // ─── Send message ─────────────────────────────────────────────────────────
+  const handleSendMessage = (e) => {
+    e.preventDefault();
     const trimmed = messageText.trim();
     if (!trimmed || !user?._id || !selectedUserId) return;
+
+    // Build reply snapshot (stored as a plain object, never a DB ref)
+    const replySnapshot = replyingTo
+      ? {
+          messageId: replyingTo._id,
+          text: replyingTo.text,
+          senderName:
+            (replyingTo.senderId?._id || replyingTo.senderId) === user._id
+              ? 'You'
+              : selectedUser?.name,
+        }
+      : null;
 
     const newMessage = {
       _id: `${Date.now()}`,
@@ -137,27 +179,40 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
       text: trimmed,
       timestamp: new Date().toISOString(),
       createdAt: new Date().toISOString(),
+      replyTo: replySnapshot,
     };
 
+    // Optimistic update
     setMessages((prev) => [...prev, newMessage]);
     sendMessage(newMessage);
 
-    api.post('/messages', {
-      senderId: user._id,
-      receiverId: selectedUserId,
-      text: trimmed,
-    }).catch((error) => {
-      console.error('Error saving message to database:', error);
-    });
+    // Persist to DB
+    api
+      .post('/messages', {
+        senderId: user._id,
+        receiverId: selectedUserId,
+        text: trimmed,
+        replyTo: replySnapshot,
+      })
+      .catch(console.error);
 
     setMessageText('');
+    setReplyingTo(null);
   };
 
+  // ─── Helpers ──────────────────────────────────────────────────────────────
   const initial = (selectedUser?.name || 'U')[0].toUpperCase();
 
+  const senderName = (message) =>
+    (message.senderId?._id || message.senderId) === user?._id
+      ? 'You'
+      : selectedUser?.name;
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="chat-window">
-      {/* Chat Header */}
+
+      {/* ── Header ── */}
       <div className="chat-header">
         <div className="chat-header-left">
           {onBack && (
@@ -179,8 +234,14 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
             <p className="chat-user-status">Active now</p>
           </div>
         </div>
+
         <div className="chat-header-actions">
-          <button className="header-action-btn" title="Video call" aria-label="Video call" onClick={handleCall}>
+          <button
+            className="header-action-btn"
+            title="Video call"
+            aria-label="Video call"
+            onClick={handleCall}
+          >
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M15.5 1h-8C6.12 1 5 2.12 5 3.5v17C5 21.88 6.12 23 7.5 23h8c1.38 0 2.5-1.12 2.5-2.5v-17C18 2.12 16.88 1 15.5 1zm-4 21c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4.5-4H7V4h9v14z" />
             </svg>
@@ -193,7 +254,7 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         </div>
       </div>
 
-      {/* Messages Container */}
+      {/* ── Messages ── */}
       <div className="chat-messages-container">
         <div className="chat-messages">
           {loadingMessages ? (
@@ -211,58 +272,101 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
               <p>Be the first to send a message to {selectedUser?.name}</p>
             </div>
           ) : (
-            messages.map((message) => (
-              <div
-                key={message._id}
-                className={`message ${
-                  (message.senderId?._id || message.senderId) === user?._id
-                    ? 'sent'
-                    : 'received'
-                }`}
-              >
-                {/* ✅ 4 new event handlers + selected highlight class */}
+            messages.map((message) => {
+              const isSent =
+                (message.senderId?._id || message.senderId) === user?._id;
+
+              return (
                 <div
-                  className={`message-content ${
-                    ctxMenu?.message._id === message._id ? 'ctx-selected' : ''
-                  }`}
-                  onContextMenu={(e) => openMenu(e, message)}
-                  onTouchStart={(e) => onTouchStart(e, message)}
-                  onTouchEnd={onTouchEnd}
-                  onTouchMove={onTouchEnd}
+                  key={message._id}
+                  id={`msg-${message._id}`}
+                  className={`message ${isSent ? 'sent' : 'received'}`}
                 >
-                  <p className="message-text">{message.text}</p>
-                  <span className="message-time">
-                    {new Date(message.timestamp).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
+                  <div
+                    className={`message-content ${
+                      ctxMenu?.message._id === message._id ? 'ctx-selected' : ''
+                    }`}
+                    onContextMenu={(e) => openMenu(e, message)}
+                    onTouchStart={(e) => onTouchStart(e, message)}
+                    onTouchEnd={onTouchEnd}
+                    onTouchMove={onTouchEnd}
+                  >
+                    {/* ── Quoted reply ── */}
+                    {message.replyTo && (
+                      <div
+                        className="message-quote"
+                        onClick={() => {
+                          const el = document.getElementById(
+                            `msg-${message.replyTo.messageId}`,
+                          );
+                          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }}
+                      >
+                        <span className="message-quote__name">
+                          {message.replyTo.senderName}
+                        </span>
+                        <span className="message-quote__text">
+                          {message.replyTo.text}
+                        </span>
+                      </div>
+                    )}
+
+                    <p className="message-text">{message.text}</p>
+                    <span className="message-time">
+                      {new Date(message.timestamp).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
           <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {/* Message Input */}
+      {/* ── Input area ── */}
       <div className="chat-input-container">
+
+        {/* Reply preview bar */}
+        {replyingTo && (
+          <div className="reply-preview">
+            <div className="reply-preview__bar" />
+            <div className="reply-preview__content">
+              <span className="reply-preview__name">{senderName(replyingTo)}</span>
+              <span className="reply-preview__text">{replyingTo.text}</span>
+            </div>
+            <button
+              className="reply-preview__close"
+              onClick={() => setReplyingTo(null)}
+              aria-label="Cancel reply"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <form className="chat-input-form" onSubmit={handleSendMessage}>
           <button type="button" className="input-action-btn" title="Attach" aria-label="Attach file">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z" />
             </svg>
           </button>
+
           <input
+            ref={inputRef}
             type="text"
             value={messageText}
             onChange={(e) => setMessageText(e.target.value)}
-            placeholder="Aa"
+            placeholder={replyingTo ? `Reply to ${senderName(replyingTo)}…` : 'Aa'}
             className="message-input"
             maxLength="1000"
             autoComplete="off"
             style={{ fontSize: '16px' }}
           />
+
           <button
             type="submit"
             className="send-button"
@@ -276,7 +380,7 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         </form>
       </div>
 
-      {/* ✅ Context menu — renders only when a message is long-pressed/right-clicked */}
+      {/* ── Context Menu ── */}
       {ctxMenu && (
         <MessageContextMenu
           message={ctxMenu.message}

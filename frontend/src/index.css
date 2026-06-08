@@ -42,6 +42,74 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Context menu */
+.ctx-menu {
+  background: #233138;
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 190px;
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  animation: ctx-pop 0.13s ease;
+}
+
+@keyframes ctx-pop {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.ctx-emoji-bar {
+  display: flex;
+  padding: 8px 10px;
+  gap: 2px;
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.07);
+}
+
+.ctx-emoji-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ctx-emoji-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: #e9edef;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.ctx-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ctx-item--danger {
+  color: #f15c6d;
+}
+
+/* Highlight the selected message bubble */
+.message-content.ctx-selected {
+  outline: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+}
+
 /* Animations */
 @keyframes blob {
   0%,

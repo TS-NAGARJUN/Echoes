@@ -54,10 +54,9 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         // TODO: open forward dialog
         break;
       case 'delete':
-        // TODO: call your delete API
-        // api.delete(`/messages/${message._id}`)
-        //   .then(() => setMessages(prev => prev.filter(m => m._id !== message._id)))
-        //   .catch(console.error);
+         api.delete(`/messages/${message._id}`)
+        .then(() => setMessages(prev => prev.filter(m => m._id !== message._id)))
+        .catch(console.error);
         break;
       case 'star':
         // TODO: toggle star

@@ -479,6 +479,80 @@
   background: #e4e6eb;
 }
 
+/* ── Message wrapper needs relative positioning ── */
+.message {
+  display: flex;
+  flex-direction: column; /* ← stack bubble + reactions vertically */
+  margin-bottom: 4px;
+}
+
+/* ── Sent messages align everything to the right ── */
+.message.sent {
+  align-items: flex-end;
+}
+
+/* ── Received messages align everything to the left ── */
+.message.received {
+  align-items: flex-start;
+}
+
+/* ── Reaction pills row ── */
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: -6px;   /* pull it up slightly to overlap the bubble bottom */
+  margin-bottom: 8px;
+  padding: 0 8px;
+}
+
+/* ── Sent bubble reactions align right ── */
+.message.sent .message-reactions {
+  justify-content: flex-end;
+}
+
+/* ── Received bubble reactions align left ── */
+.message.received .message-reactions {
+  justify-content: flex-start;
+}
+
+/* ── Each pill ── */
+.reaction-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #fff;
+  border: 1.5px solid #e4e6eb;
+  border-radius: 100px;
+  padding: 2px 7px;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: transform 0.1s, background 0.15s;
+  line-height: 1.4;
+}
+
+.reaction-pill:hover {
+  transform: scale(1.15);
+  background: #f0f2f5;
+}
+
+/* Pill the current user reacted with — highlighted */
+.reaction-pill--mine {
+  background: #e7f3ff;
+  border-color: #0084ff;
+}
+
+.reaction-pill span {
+  font-size: 11px;
+  font-weight: 600;
+  color: #65676b;
+}
+
+.reaction-pill--mine span {
+  color: #0084ff;
+}
+
 /* ── Quoted message inside bubble ─────────────────────────────────────────── */
 .message-quote {
   display: flex;

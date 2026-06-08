@@ -6,14 +6,20 @@
 
 const express = require('express');
 const router = express.Router();
-const { sendMessage, getMessages, editMessage, deleteMessage } = require('../controllers/messageController');
+const {
+  sendMessage,
+  getMessages,
+  editMessage,
+  deleteMessage,
+  reactToMessage, // ✅ new
+} = require('../controllers/messageController');
 const { protect } = require('../middleware/auth');
 
 /**
  * POST /api/messages
- * Send a new message
+ * Send a new message (with optional replyTo)
  * Protected - requires authentication
- * Body: { senderId, receiverId, text }
+ * Body: { senderId, receiverId, text, replyTo? }
  */
 router.post('/', protect, sendMessage);
 
@@ -38,5 +44,18 @@ router.put('/:messageId', protect, editMessage);
  * Protected - requires authentication
  */
 router.delete('/:messageId', protect, deleteMessage);
+
+/**
+ * POST /api/messages/:messageId/react
+ * Add, change, or remove an emoji reaction on a message
+ * Protected - requires authentication
+ * Body: { emoji: "👍" }
+ *
+ * Logic:
+ *   No reaction yet      → add it
+ *   Same emoji again     → remove it (toggle off)
+ *   Different emoji      → replace old one
+ */
+router.post('/:messageId/react', protect, reactToMessage);
 
 module.exports = router;

@@ -15,15 +15,15 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
   const [messages, setMessages] = useState([]);
   const [messageText, setMessageText] = useState('');
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [replyingTo, setReplyingTo] = useState(null); // { _id, text, senderId }
-  const [ctxMenu, setCtxMenu] = useState(null);       // { message, position }
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [ctxMenu, setCtxMenu] = useState(null);
 
   // ─── Refs ─────────────────────────────────────────────────────────────────
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const longPressTimer = useRef(null);
 
-  // ─── Context Menu ─────────────────────────────────────────────────────────
+  // ─── Context Menu open/close ──────────────────────────────────────────────
   const openMenu = useCallback((e, message) => {
     e.preventDefault();
     const x = e.clientX ?? e.touches?.[0]?.clientX;
@@ -49,14 +49,15 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
   }, []);
 
   // ─── Context Menu Actions ─────────────────────────────────────────────────
-  const handleAction = useCallback((action, message) => {
+  const handleAction = useCallback((action, payload) => {
     switch (action) {
+
       case 'copy':
-        navigator.clipboard.writeText(message.text);
+        navigator.clipboard.writeText(payload.text);
         break;
 
       case 'reply':
-        setReplyingTo(message);
+        setReplyingTo(payload);
         setTimeout(() => inputRef.current?.focus(), 50);
         break;
 
@@ -66,10 +67,16 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
 
       case 'delete':
         api
-          .delete(`/messages/${message._id}`)
-          .then(() =>
-            setMessages((prev) => prev.filter((m) => m._id !== message._id)),
-          )
+          .delete(`/messages/${payload._id}`)
+          .then(() => {
+            setMessages((prev) => prev.filter((m) => m._id !== payload._id));
+            // ✅ Notify receiver via socket
+            socket?.emit('delete_message', {
+              messageId:  payload._id,
+              senderId:   user?._id,
+              receiverId: selectedUserId,
+            });
+          })
           .catch(console.error);
         break;
 
@@ -77,15 +84,42 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         // TODO: toggle star
         break;
 
-      case 'react':
-        // message here is { emoji, message } from MessageContextMenu
-        // TODO: send reaction via socket / api
+      // ✅ FIXED: react case now calls the API and updates state
+      case 'react': {
+        // payload = { emoji, message } from MessageContextMenu
+        const { emoji, message: targetMessage } = payload;
+
+        api
+          .post(`/messages/${targetMessage._id}/react`, { emoji })
+          .then(({ data }) => {
+            // data.data = updated reactions array from backend
+            const updatedReactions = data.data;
+
+            // Update local message state
+            setMessages((prev) =>
+              prev.map((m) =>
+                m._id === targetMessage._id
+                  ? { ...m, reactions: updatedReactions }
+                  : m,
+              ),
+            );
+
+            // Broadcast reaction update to receiver via socket
+            socket?.emit('react_message', {
+              messageId:  targetMessage._id,
+              reactions:  updatedReactions,
+              senderId:   user?._id,
+              receiverId: selectedUserId,
+            });
+          })
+          .catch(console.error);
         break;
+      }
 
       default:
         break;
     }
-  }, []);
+  }, [socket, user?._id, selectedUserId]);
 
   // ─── Video Call ───────────────────────────────────────────────────────────
   const handleCall = () => {
@@ -107,10 +141,11 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
       try {
         setLoadingMessages(true);
         const response = await api.get(`/messages/${selectedUserId}`);
-        const fetched = response?.data || [];
+        // ✅ api.get returns response.data — your backend wraps in { success, data }
+        const fetched = response?.data?.data || response?.data || [];
 
         const filtered = fetched.filter((msg) => {
-          const sender = msg.senderId?._id || msg.senderId;
+          const sender   = msg.senderId?._id   || msg.senderId;
           const receiver = msg.receiverId?._id || msg.receiverId;
           return (
             (sender === user._id && receiver === selectedUserId) ||
@@ -121,6 +156,7 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         setMessages(
           filtered.map((msg) => ({
             ...msg,
+            reactions: msg.reactions || [], // ✅ ensure reactions always an array
             timestamp: msg.timestamp || msg.createdAt,
           })),
         );
@@ -134,10 +170,11 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
     fetchMessages();
   }, [selectedUserId, user?._id]);
 
-  // ─── Incoming socket messages ─────────────────────────────────────────────
+  // ─── Socket listeners ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
 
+    // Incoming new message
     const handleIncoming = (message) => {
       if (
         message.receiverId === user?._id &&
@@ -145,13 +182,36 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
       ) {
         setMessages((prev) => [
           ...prev,
-          { ...message, timestamp: message.timestamp || message.createdAt },
+          {
+            ...message,
+            reactions: message.reactions || [], // ✅ ensure reactions always an array
+            timestamp: message.timestamp || message.createdAt,
+          },
         ]);
       }
     };
 
-    socket.on('message', handleIncoming);
-    return () => socket.off('message', handleIncoming);
+    // ✅ Real-time reaction update from other user
+    const handleReaction = ({ messageId, reactions }) => {
+      setMessages((prev) =>
+        prev.map((m) => (m._id === messageId ? { ...m, reactions } : m)),
+      );
+    };
+
+    // ✅ Real-time delete from other user
+    const handleDeleted = ({ messageId }) => {
+      setMessages((prev) => prev.filter((m) => m._id !== messageId));
+    };
+
+    socket.on('message',          handleIncoming);
+    socket.on('message_reaction', handleReaction);
+    socket.on('message_deleted',  handleDeleted);
+
+    return () => {
+      socket.off('message',          handleIncoming);
+      socket.off('message_reaction', handleReaction);
+      socket.off('message_deleted',  handleDeleted);
+    };
   }, [socket, selectedUserId, user?._id]);
 
   // ─── Send message ─────────────────────────────────────────────────────────
@@ -160,11 +220,11 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
     const trimmed = messageText.trim();
     if (!trimmed || !user?._id || !selectedUserId) return;
 
-    // Build reply snapshot (stored as a plain object, never a DB ref)
     const replySnapshot = replyingTo
       ? {
           messageId: replyingTo._id,
           text: replyingTo.text,
+          senderId: replyingTo.senderId?._id || replyingTo.senderId,
           senderName:
             (replyingTo.senderId?._id || replyingTo.senderId) === user._id
               ? 'You'
@@ -174,25 +234,24 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
 
     const newMessage = {
       _id: `${Date.now()}`,
-      senderId: user._id,
+      senderId:  user._id,
       receiverId: selectedUserId,
       text: trimmed,
       timestamp: new Date().toISOString(),
       createdAt: new Date().toISOString(),
-      replyTo: replySnapshot,
+      replyTo:   replySnapshot,
+      reactions: [], // ✅ new messages start with empty reactions
     };
 
-    // Optimistic update
     setMessages((prev) => [...prev, newMessage]);
     sendMessage(newMessage);
 
-    // Persist to DB
     api
       .post('/messages', {
-        senderId: user._id,
+        senderId:   user._id,
         receiverId: selectedUserId,
-        text: trimmed,
-        replyTo: replySnapshot,
+        text:       trimmed,
+        replyTo:    replySnapshot,
       })
       .catch(console.error);
 
@@ -276,6 +335,13 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
               const isSent =
                 (message.senderId?._id || message.senderId) === user?._id;
 
+              // ✅ Group reactions by emoji for the pill display
+              const reactionGroups = (message.reactions || []).reduce((acc, r) => {
+                acc[r.emoji] = (acc[r.emoji] || []);
+                acc[r.emoji].push(r.userId?._id || r.userId);
+                return acc;
+              }, {});
+
               return (
                 <div
                   key={message._id}
@@ -312,6 +378,7 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
                     )}
 
                     <p className="message-text">{message.text}</p>
+
                     <span className="message-time">
                       {new Date(message.timestamp).toLocaleTimeString([], {
                         hour: '2-digit',
@@ -319,6 +386,29 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
                       })}
                     </span>
                   </div>
+
+                  {/* ✅ Reaction pills — outside message-content so they sit below the bubble */}
+                  {Object.keys(reactionGroups).length > 0 && (
+                    <div className="message-reactions">
+                      {Object.entries(reactionGroups).map(([emoji, userIds]) => {
+                        const iMine = userIds.includes(user?._id);
+                        return (
+                          <button
+                            key={emoji}
+                            className={`reaction-pill ${iMine ? 'reaction-pill--mine' : ''}`}
+                            onClick={() =>
+                              handleAction('react', { emoji, message })
+                            }
+                          >
+                            {emoji}
+                            {userIds.length > 1 && (
+                              <span>{userIds.length}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })

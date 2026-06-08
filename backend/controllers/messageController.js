@@ -1,7 +1,7 @@
 /**
  * @file controllers/messageController.js
  * @description Message controller.
- * Handles message sending, retrieval, editing, and deletion.
+ * Handles message sending, retrieval, editing, deletion, and emoji reactions.
  */
 
 const asyncHandler = require('express-async-handler');
@@ -10,20 +10,23 @@ const User = require('../models/User');
 
 /**
  * Send a new message from authenticated user to another user.
- * Validates that both sender and receiver exist.
+ * Supports optional replyTo snapshot for reply context.
  * @async
  * @route POST /api/messages
  * @access Private (requires authentication)
- * @param {Object} req - Express request object
- * @param {String} req.body.senderId - ID of message sender
- * @param {String} req.body.receiverId - ID of message receiver
- * @param {String} req.body.text - Message content
- * @returns {Object} Created message with timestamps
+ * @param {Object} req.body.senderId   - ID of message sender
+ * @param {Object} req.body.receiverId - ID of message receiver
+ * @param {String} req.body.text       - Message content
+ * @param {Object} [req.body.replyTo]  - Optional reply context
+ * @param {String} req.body.replyTo.messageId  - Original message ID
+ * @param {String} req.body.replyTo.text       - Snapshot of original text
+ * @param {String} req.body.replyTo.senderId   - Original sender ID
+ * @param {String} req.body.replyTo.senderName - Original sender display name
  */
 const sendMessage = asyncHandler(async (req, res) => {
-  const { senderId, receiverId, text } = req.body;
+  const { senderId, receiverId, text, replyTo } = req.body;
 
-  // Validation
+  // ── Validate required fields ──────────────────────────────────────────────
   if (!senderId || !receiverId || !text) {
     res.status(400);
     throw new Error('Sender ID, Receiver ID, and message text are required');
@@ -34,29 +37,63 @@ const sendMessage = asyncHandler(async (req, res) => {
     throw new Error('Message cannot be empty');
   }
 
-  // Verify both users exist
-  const senderExists = await User.findById(senderId);
-  const receiverExists = await User.findById(receiverId);
+  if (senderId === receiverId) {
+    res.status(400);
+    throw new Error('Cannot send message to yourself');
+  }
+
+  // ── Verify both users exist ───────────────────────────────────────────────
+  const [senderExists, receiverExists] = await Promise.all([
+    User.findById(senderId),
+    User.findById(receiverId),
+  ]);
 
   if (!senderExists || !receiverExists) {
     res.status(404);
     throw new Error('Sender or receiver not found');
   }
 
-  if (senderId === receiverId) {
-    res.status(400);
-    throw new Error('Cannot send message to yourself');
+  // ── Validate replyTo if provided ──────────────────────────────────────────
+  let replyToData = null;
+  if (replyTo) {
+    const { messageId, text: replyText, senderId: replySenderId, senderName } = replyTo;
+
+    if (!messageId || !replyText || !replySenderId || !senderName) {
+      res.status(400);
+      throw new Error('replyTo must include messageId, text, senderId, and senderName');
+    }
+
+    // Confirm original message exists and is not deleted
+    const originalMessage = await Message.findOne({
+      _id: messageId,
+      isDeleted: false,
+    });
+
+    if (!originalMessage) {
+      res.status(404);
+      throw new Error('Original message not found or has been deleted');
+    }
+
+    replyToData = {
+      messageId,
+      text: replyText.slice(0, 500), // enforce snapshot max length
+      senderId: replySenderId,
+      senderName,
+    };
   }
 
-  // Create message
+  // ── Create message ────────────────────────────────────────────────────────
   const message = await Message.create({
     senderId,
     receiverId,
     text: text.trim(),
+    replyTo: replyToData,
   });
 
-  // Populate user references for response
-  await message.populate(['senderId', 'receiverId']);
+  await message.populate([
+    { path: 'senderId',   select: 'name email profilePic' },
+    { path: 'receiverId', select: 'name email profilePic' },
+  ]);
 
   res.status(201).json({
     success: true,
@@ -66,50 +103,40 @@ const sendMessage = asyncHandler(async (req, res) => {
 
 /**
  * Get all messages in a conversation between logged-in user and a specific user.
- * Messages are sorted by creation date (oldest first).
- * Excludes soft-deleted messages by default.
+ * Sorted oldest first. Excludes soft-deleted messages.
  * @async
  * @route GET /api/messages/:userId
  * @access Private (requires authentication)
- * @param {Object} req - Express request object
- * @param {String} req.params.userId - ID of the other user in conversation
- * @param {Object} req.user - Authenticated user (added by auth middleware)
- * @returns {Array} Array of message objects sorted by timestamp
  */
 const getMessages = asyncHandler(async (req, res) => {
   const { userId } = req.params;
   const myId = req.user._id;
 
-  // Validate userId
   if (!userId) {
     res.status(400);
     throw new Error('User ID is required');
   }
 
-  // Check if user exists
   const userExists = await User.findById(userId);
   if (!userExists) {
     res.status(404);
     throw new Error('User not found');
   }
 
-  // Find messages where logged-in user is sender OR receiver
-  // AND the other party is the specified user
-  // Exclude deleted messages (isDeleted = false)
   const messages = await Message.find({
     $and: [
       {
         $or: [
-          { senderId: myId, receiverId: userId },
-          { senderId: userId, receiverId: myId },
+          { senderId: myId,   receiverId: userId },
+          { senderId: userId, receiverId: myId   },
         ],
       },
-      { isDeleted: false }, // Only fetch non-deleted messages
+      { isDeleted: false },
     ],
   })
-    .populate('senderId', 'name email profilePic') // Populate sender details
-    .populate('receiverId', 'name email profilePic') // Populate receiver details
-    .sort({ createdAt: 1 }); // Sort by creation date (ascending)
+    .populate('senderId',   'name email profilePic')
+    .populate('receiverId', 'name email profilePic')
+    .sort({ createdAt: 1 });
 
   res.status(200).json({
     success: true,
@@ -120,62 +147,53 @@ const getMessages = asyncHandler(async (req, res) => {
 
 /**
  * Edit a message sent by the authenticated user.
- * Only the sender can edit their own messages.
- * Marks message as edited with timestamp.
+ * Only the sender can edit. Marks message as edited with timestamp.
  * @async
  * @route PUT /api/messages/:messageId
  * @access Private (requires authentication, only sender)
- * @param {Object} req - Express request object
- * @param {String} req.params.messageId - ID of message to edit
- * @param {String} req.body.text - New message text
- * @param {Object} req.user - Authenticated user
- * @returns {Object} Updated message object
  */
 const editMessage = asyncHandler(async (req, res) => {
   const { messageId } = req.params;
   const { text } = req.body;
   const userId = req.user._id;
 
-  // Validation
   if (!text || text.trim().length === 0) {
     res.status(400);
     throw new Error('Message text cannot be empty');
   }
 
-  // Find message
   const message = await Message.findById(messageId);
   if (!message) {
     res.status(404);
     throw new Error('Message not found');
   }
 
-  // Check if message is already deleted
   if (message.isDeleted) {
-    res.status(410); // Gone status
+    res.status(410);
     throw new Error('Cannot edit a deleted message');
   }
 
-  // Verify sender is the one editing
   if (message.senderId.toString() !== userId.toString()) {
-    res.status(403); // Forbidden status
+    res.status(403);
     throw new Error('You can only edit your own messages');
   }
 
   // Optional: Prevent editing messages older than 24 hours
-  // const editWindow = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+  // const editWindow = 24 * 60 * 60 * 1000;
   // if (Date.now() - message.createdAt.getTime() > editWindow) {
   //   res.status(400);
   //   throw new Error('Cannot edit messages older than 24 hours');
   // }
 
-  // Update message
   message.text = text.trim();
   message.isEdited = true;
   message.editedAt = new Date();
   await message.save();
 
-  // Populate for response
-  await message.populate(['senderId', 'receiverId']);
+  await message.populate([
+    { path: 'senderId',   select: 'name email profilePic' },
+    { path: 'receiverId', select: 'name email profilePic' },
+  ]);
 
   res.status(200).json({
     success: true,
@@ -185,45 +203,36 @@ const editMessage = asyncHandler(async (req, res) => {
 });
 
 /**
- * Delete a message sent by the authenticated user.
- * Only the sender can delete their own messages.
- * Implements soft delete to preserve audit trail.
+ * Soft-delete a message sent by the authenticated user.
+ * Only the sender can delete. Preserves data for audit trail.
  * @async
  * @route DELETE /api/messages/:messageId
  * @access Private (requires authentication, only sender)
- * @param {Object} req - Express request object
- * @param {String} req.params.messageId - ID of message to delete
- * @param {Object} req.user - Authenticated user
- * @returns {Object} Success response with deleted message info
  */
 const deleteMessage = asyncHandler(async (req, res) => {
   const { messageId } = req.params;
   const userId = req.user._id;
 
-  // Find message
   const message = await Message.findById(messageId);
   if (!message) {
     res.status(404);
     throw new Error('Message not found');
   }
 
-  // Check if already deleted
   if (message.isDeleted) {
-    res.status(410); // Gone status
+    res.status(410);
     throw new Error('Message already deleted');
   }
 
-  // Verify sender is the one deleting
   if (message.senderId.toString() !== userId.toString()) {
-    res.status(403); // Forbidden status
+    res.status(403);
     throw new Error('You can only delete your own messages');
   }
 
-  // Soft delete: mark as deleted but preserve data
   message.isDeleted = true;
   message.deletedAt = new Date();
-  // Clear text for privacy (optional, remove if you want to keep deleted text)
-  // message.text = '[Message deleted by sender]';
+  // Optionally clear text for privacy:
+  // message.text = '[Message deleted]';
   await message.save();
 
   res.status(200).json({
@@ -237,6 +246,73 @@ const deleteMessage = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { sendMessage, getMessages, editMessage, deleteMessage };
+/**
+ * Add, change, or remove an emoji reaction on a message.
+ *
+ * Rules:
+ *   - User has no reaction       → ADD it
+ *   - User sends the SAME emoji  → REMOVE it (toggle off)
+ *   - User sends DIFFERENT emoji → REPLACE old one
+ *
+ * @async
+ * @route POST /api/messages/:messageId/react
+ * @access Private (requires authentication)
+ * @param {String} req.params.messageId - ID of message to react to
+ * @param {String} req.body.emoji       - Emoji character e.g. "👍"
+ * @returns {Array} Updated reactions array for the message
+ */
+const reactToMessage = asyncHandler(async (req, res) => {
+  const { messageId } = req.params;
+  const { emoji } = req.body;
+  const userId = req.user._id;
 
+  // ── Validate emoji ────────────────────────────────────────────────────────
+  if (!emoji || typeof emoji !== 'string' || emoji.trim().length === 0) {
+    res.status(400);
+    throw new Error('A valid emoji is required');
+  }
 
+  // ── Find message ──────────────────────────────────────────────────────────
+  const message = await Message.findOne({ _id: messageId, isDeleted: false });
+  if (!message) {
+    res.status(404);
+    throw new Error('Message not found or has been deleted');
+  }
+
+  // ── Upsert / remove reaction ──────────────────────────────────────────────
+  const existingIndex = message.reactions.findIndex(
+    (r) => r.userId.toString() === userId.toString(),
+  );
+
+  if (existingIndex === -1) {
+    // No existing reaction → ADD
+    message.reactions.push({
+      userId,
+      emoji: emoji.trim(),
+      reactedAt: new Date(),
+    });
+  } else if (message.reactions[existingIndex].emoji === emoji.trim()) {
+    // Same emoji → REMOVE (toggle off)
+    message.reactions.splice(existingIndex, 1);
+  } else {
+    // Different emoji → REPLACE
+    message.reactions[existingIndex].emoji = emoji.trim();
+    message.reactions[existingIndex].reactedAt = new Date();
+  }
+
+  await message.save();
+
+  res.status(200).json({
+    success: true,
+    data: message.reactions,
+    message: 'Reaction updated successfully',
+  });
+});
+
+module.exports = {
+  sendMessage,
+  getMessages,
+  editMessage,
+  deleteMessage,
+  reactToMessage,
+};

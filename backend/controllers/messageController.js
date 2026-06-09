@@ -7,6 +7,7 @@
 const asyncHandler = require('express-async-handler');
 const Message = require('../models/Message');
 const User = require('../models/User');
+const { getIO } = require('../socket');
 
 /**
  * Send a new message from authenticated user to another user.
@@ -194,6 +195,23 @@ const editMessage = asyncHandler(async (req, res) => {
     { path: 'senderId',   select: 'name email profilePic' },
     { path: 'receiverId', select: 'name email profilePic' },
   ]);
+
+  // ── Real-time broadcast (REST-driven edit) ─────────────────────────────────
+  try {
+    const io = getIO();
+    const payload = {
+      messageId: message._id.toString(),
+      newText: message.text,
+      senderId: message.senderId.toString(),
+      receiverId: message.receiverId.toString(),
+      editedAt: message.editedAt,
+    };
+    io.to(payload.senderId).emit('messageEdited', payload);
+    io.to(payload.receiverId).emit('messageEdited', payload);
+  } catch (socketErr) {
+    // Socket not initialized (e.g. tests) — non-fatal
+    console.warn('Socket emit skipped:', socketErr.message);
+  }
 
   res.status(200).json({
     success: true,

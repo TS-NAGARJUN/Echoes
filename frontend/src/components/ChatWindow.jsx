@@ -17,11 +17,14 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [replyingTo, setReplyingTo] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingText, setEditingText] = useState('');
 
   // ─── Refs ─────────────────────────────────────────────────────────────────
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const longPressTimer = useRef(null);
+  const editInputRef = useRef(null);
 
   // ─── Context Menu open/close ──────────────────────────────────────────────
   const openMenu = useCallback((e, message) => {
@@ -61,16 +64,24 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         setTimeout(() => inputRef.current?.focus(), 50);
         break;
 
-      case 'forward':
-        // TODO: open forward dialog
+      case 'edit': {
+        // Open inline editor for the selected message
+        setEditingMessageId(payload._id);
+        setEditingText(payload.text);
+        setTimeout(() => {
+          if (editInputRef.current) {
+            editInputRef.current.focus();
+            editInputRef.current.select?.();
+          }
+        }, 50);
         break;
+      }
 
       case 'delete':
         api
           .delete(`/messages/${payload._id}`)
           .then(() => {
             setMessages((prev) => prev.filter((m) => m._id !== payload._id));
-            // ✅ Notify receiver via socket
             socket?.emit('delete_message', {
               messageId:  payload._id,
               senderId:   user?._id,
@@ -84,18 +95,12 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         // TODO: toggle star
         break;
 
-      // ✅ FIXED: react case now calls the API and updates state
       case 'react': {
-        // payload = { emoji, message } from MessageContextMenu
         const { emoji, message: targetMessage } = payload;
-
         api
           .post(`/messages/${targetMessage._id}/react`, { emoji })
           .then(({ data }) => {
-            // data.data = updated reactions array from backend
             const updatedReactions = data.data;
-
-            // Update local message state
             setMessages((prev) =>
               prev.map((m) =>
                 m._id === targetMessage._id
@@ -103,8 +108,6 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
                   : m,
               ),
             );
-
-            // Broadcast reaction update to receiver via socket
             socket?.emit('react_message', {
               messageId:  targetMessage._id,
               reactions:  updatedReactions,
@@ -120,6 +123,54 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         break;
     }
   }, [socket, user?._id, selectedUserId]);
+
+  // ─── Save edited message (PUT /api/messages/:id) ──────────────────────────
+  const handleSaveEdit = useCallback(async () => {
+    const trimmed = editingText.trim();
+    if (!trimmed || !editingMessageId) {
+      setEditingMessageId(null);
+      setEditingText('');
+      return;
+    }
+
+    const targetId = editingMessageId;
+
+    try {
+      const { data } = await api.put(`/messages/${targetId}`, { text: trimmed });
+      const updated = data?.data || data;
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m._id === targetId
+            ? {
+                ...m,
+                text:     updated.text     ?? trimmed,
+                isEdited: updated.isEdited ?? true,
+                editedAt: updated.editedAt ?? new Date().toISOString(),
+              }
+            : m,
+        ),
+      );
+
+      socket?.emit('messageEdited', {
+        messageId:  targetId,
+        newText:    updated.text ?? trimmed,
+        senderId:   user?._id,
+        receiverId: selectedUserId,
+        editedAt:   updated.editedAt ?? new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Failed to edit message:', err);
+    } finally {
+      setEditingMessageId(null);
+      setEditingText('');
+    }
+  }, [editingText, editingMessageId, socket, user?._id, selectedUserId]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingText('');
+  }, []);
 
   // ─── Video Call ───────────────────────────────────────────────────────────
   const handleCall = () => {
@@ -141,7 +192,6 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
       try {
         setLoadingMessages(true);
         const response = await api.get(`/messages/${selectedUserId}`);
-        // ✅ api.get returns response.data — your backend wraps in { success, data }
         const fetched = response?.data?.data || response?.data || [];
 
         const filtered = fetched.filter((msg) => {
@@ -156,7 +206,7 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         setMessages(
           filtered.map((msg) => ({
             ...msg,
-            reactions: msg.reactions || [], // ✅ ensure reactions always an array
+            reactions: msg.reactions || [],
             timestamp: msg.timestamp || msg.createdAt,
           })),
         );
@@ -174,7 +224,6 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
   useEffect(() => {
     if (!socket) return;
 
-    // Incoming new message
     const handleIncoming = (message) => {
       if (
         message.receiverId === user?._id &&
@@ -184,33 +233,55 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
           ...prev,
           {
             ...message,
-            reactions: message.reactions || [], // ✅ ensure reactions always an array
+            reactions: message.reactions || [],
             timestamp: message.timestamp || message.createdAt,
           },
         ]);
       }
     };
 
-    // ✅ Real-time reaction update from other user
     const handleReaction = ({ messageId, reactions }) => {
       setMessages((prev) =>
         prev.map((m) => (m._id === messageId ? { ...m, reactions } : m)),
       );
     };
 
-    // ✅ Real-time delete from other user
     const handleDeleted = ({ messageId }) => {
       setMessages((prev) => prev.filter((m) => m._id !== messageId));
+    };
+
+    const handleEdited = ({ messageId, newText, editedAt, updatedMessage }) => {
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m._id !== messageId) return m;
+          if (updatedMessage) {
+            return {
+              ...m,
+              text:     updatedMessage.text     ?? newText ?? m.text,
+              isEdited: updatedMessage.isEdited ?? true,
+              editedAt: updatedMessage.editedAt ?? editedAt ?? m.editedAt,
+            };
+          }
+          return {
+            ...m,
+            text:     newText  ?? m.text,
+            isEdited: true,
+            editedAt: editedAt ?? m.editedAt ?? new Date().toISOString(),
+          };
+        }),
+      );
     };
 
     socket.on('message',          handleIncoming);
     socket.on('message_reaction', handleReaction);
     socket.on('message_deleted',  handleDeleted);
+    socket.on('messageEdited',    handleEdited);
 
     return () => {
       socket.off('message',          handleIncoming);
       socket.off('message_reaction', handleReaction);
       socket.off('message_deleted',  handleDeleted);
+      socket.off('messageEdited',    handleEdited);
     };
   }, [socket, selectedUserId, user?._id]);
 
@@ -240,7 +311,7 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
       timestamp: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       replyTo:   replySnapshot,
-      reactions: [], // ✅ new messages start with empty reactions
+      reactions: [],
     };
 
     setMessages((prev) => [...prev, newMessage]);
@@ -334,8 +405,8 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
             messages.map((message) => {
               const isSent =
                 (message.senderId?._id || message.senderId) === user?._id;
+              const isEditing = editingMessageId === message._id;
 
-              // ✅ Group reactions by emoji for the pill display
               const reactionGroups = (message.reactions || []).reduce((acc, r) => {
                 acc[r.emoji] = (acc[r.emoji] || []);
                 acc[r.emoji].push(r.userId?._id || r.userId);
@@ -351,13 +422,12 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
                   <div
                     className={`message-content ${
                       ctxMenu?.message._id === message._id ? 'ctx-selected' : ''
-                    }`}
+                    } ${isEditing ? 'message-content--editing' : ''}`}
                     onContextMenu={(e) => openMenu(e, message)}
                     onTouchStart={(e) => onTouchStart(e, message)}
                     onTouchEnd={onTouchEnd}
                     onTouchMove={onTouchEnd}
                   >
-                    {/* ── Quoted reply ── */}
                     {message.replyTo && (
                       <div
                         className="message-quote"
@@ -377,17 +447,60 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
                       </div>
                     )}
 
-                    <p className="message-text">{message.text}</p>
-
-                    <span className="message-time">
-                      {new Date(message.timestamp).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
+                    {isEditing ? (
+                      <div className="message-edit-box" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          ref={editInputRef}
+                          type="text"
+                          className="message-edit-input"
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSaveEdit();
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              handleCancelEdit();
+                            }
+                          }}
+                          maxLength={1000}
+                          autoComplete="off"
+                        />
+                        <div className="message-edit-actions">
+                          <button
+                            type="button"
+                            className="message-edit-btn message-edit-btn--cancel"
+                            onClick={handleCancelEdit}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="message-edit-btn message-edit-btn--save"
+                            onClick={handleSaveEdit}
+                            disabled={!editingText.trim()}
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="message-text">{message.text}</p>
+                        <span className="message-time">
+                          {new Date(message.timestamp).toLocaleTimeString([], {
+                            hour:   '2-digit',
+                            minute: '2-digit',
+                          })}
+                          {message.isEdited && (
+                            <span className="message-edited" title="Edited"> · edited</span>
+                          )}
+                        </span>
+                      </>
+                    )}
                   </div>
 
-                  {/* ✅ Reaction pills — outside message-content so they sit below the bubble */}
                   {Object.keys(reactionGroups).length > 0 && (
                     <div className="message-reactions">
                       {Object.entries(reactionGroups).map(([emoji, userIds]) => {
@@ -475,6 +588,7 @@ const ChatWindow = ({ selectedUserId, selectedUser, onBack }) => {
         <MessageContextMenu
           message={ctxMenu.message}
           position={ctxMenu.position}
+          isSender={(ctxMenu.message.senderId?._id || ctxMenu.message.senderId) === user?._id}
           onClose={closeMenu}
           onAction={handleAction}
         />

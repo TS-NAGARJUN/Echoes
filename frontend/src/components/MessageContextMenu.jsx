@@ -1,16 +1,16 @@
 import {useRef,useEffect} from 'react';
 
 const MENU_ITEMS = [
-  { label: "Reply",   icon: "↩", action: "reply"   },
-  { label: "Forward", icon: "↪", action: "forward" },
-  { label: "Copy",    icon: "⎘", action: "copy"    },
-  { label: "Star",    icon: "☆", action: "star"    },
-  { label: "Delete",  icon: "🗑", action: "delete", danger: true },
+  { label: "Reply", icon: "↩", action: "reply"   },
+  { label: "Edit",  icon: "✎", action: "edit", senderOnly: true },
+  { label: "Copy",  icon: "⎘", action: "copy"    },
+  { label: "Star",  icon: "☆", action: "star"    },
+  { label: "Delete", icon: "🗑", action: "delete", danger: true },
 ];
 
 const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
-export default function MessageContextMenu({ message, position, onClose, onAction }) {
+export default function MessageContextMenu({ message, position, isSender, onClose, onAction }) {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -31,6 +31,11 @@ export default function MessageContextMenu({ message, position, onClose, onActio
     transform: `translate(${flipX ? "-100%" : "0"}, ${flipY ? "-100%" : "0"})`,
     zIndex: 1000,
   };
+
+  // Filter out sender-only actions when the current user is not the sender
+  const visibleItems = MENU_ITEMS.filter(
+    (item) => !item.senderOnly || isSender,
+  );
 
   return (
     <>
@@ -53,7 +58,7 @@ export default function MessageContextMenu({ message, position, onClose, onActio
         </div>
 
         {/* Action items */}
-        {MENU_ITEMS.map((item) => (
+        {visibleItems.map((item) => (
           <button
             key={item.action}
             className={`ctx-item ${item.danger ? "ctx-item--danger" : ""}`}
